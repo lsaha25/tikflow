@@ -155,18 +155,35 @@ export default function Automations({ session }) {
     })
     await supabase.from('automations').update({dms_sent: a.dms_sent+1}).eq('id',a.id)
     setAutomations(prev => prev.map(x => x.id===a.id ? {...x,dms_sent:x.dms_sent+1} : x))
+    // Load profile for integrations
+    const { data: profile } = await supabase.from('profiles').select('email_from_name,email_from_address,email_api_key,slack_webhook_url').eq('id',uid).single()
+
     // Send email if enabled + configured
-    if (a.email_enabled) {
-      const { data: profile } = await supabase.from('profiles').select('email_from_name,email_from_address,email_api_key').eq('id',uid).single()
-      if (profile?.email_api_key && profile?.email_from_address) {
-        const body = (a.email_body||'').replace(/{{first_name}}/g, fakeUser).replace(/{{tiktok_username}}/g, fakeUser).replace(/{{dm_message}}/g, a.dm_message||'')
-        const subject = (a.email_subject||'').replace(/{{automation_name}}/g, a.name)
-        await fetch('https://api.resend.com/emails', {
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+profile.email_api_key},
-          body: JSON.stringify({ from:`${profile.email_from_name||'TikFlow'} <${profile.email_from_address}>`, to:[profile.email_from_address], subject, text:body })
-        }).catch(()=>{})
-      }
+    if (a.email_enabled && profile?.email_api_key && profile?.email_from_address) {
+      const body = (a.email_body||'').replace(/{{first_name}}/g, fakeUser).replace(/{{tiktok_username}}/g, fakeUser).replace(/{{dm_message}}/g, a.dm_message||'')
+      const subject = (a.email_subject||'').replace(/{{automation_name}}/g, a.name)
+      await fetch('https://api.resend.com/emails', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+profile.email_api_key},
+        body: JSON.stringify({ from:`${profile.email_from_name||'TikFlow'} <${profile.email_from_address}>`, to:[profile.email_from_address], subject, text:body })
+      }).catch(()=>{})
+    }
+
+    // Slack notification
+    if (profile?.slack_webhook_url) {
+      await fetch(profile.slack_webhook_url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          text: `⚡ *New TikFlow Lead!*
+*Automation:* ${a.name}
+*TikTok:* @${fakeUser}
+*Trigger:* ${a.trigger_type}
+*DM sent:* ${a.dm_message||'(no message)'.slice(0,80)}`,
+          username:'TikFlow',
+          icon_emoji:':zap:',
+        })
+      }).catch(()=>{})
     }
     await new Promise(r => setTimeout(r, 600))
     setSimulating(null)

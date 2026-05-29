@@ -124,3 +124,16 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- TikTok OAuth credentials (stored per user, behind RLS)
+alter table public.profiles add column if not exists tiktok_client_key text default '';
+alter table public.profiles add column if not exists tiktok_client_secret text default '';
+alter table public.profiles add column if not exists tiktok_redirect_uri text default '';
+alter table public.profiles add column if not exists slack_webhook_url text default '';
+
+-- TikTok account token fields
+alter table public.tiktok_accounts add column if not exists tiktok_open_id text default '';
+alter table public.tiktok_accounts add column if not exists avatar_url text default '';
+alter table public.tiktok_accounts add column if not exists access_token text default '';
+alter table public.tiktok_accounts add column if not exists refresh_token text default '';
+alter table public.tiktok_accounts add column if not exists token_expires_at timestamptz;
