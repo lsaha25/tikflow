@@ -17,12 +17,15 @@ function Modal({ onClose, onSave, initial }) {
   const [trigger, setTrigger] = useState(initial?.trigger_type||'comment')
   const [keywords, setKeywords] = useState((initial?.keywords||[]).join(', '))
   const [message, setMessage] = useState(initial?.dm_message||'Hey {{first_name}}! 👋 Thanks for reaching out. Here\'s the link you asked for 👇')
+  const [emailEnabled, setEmailEnabled] = useState(initial?.email_enabled||false)
+  const [emailSubject, setEmailSubject] = useState(initial?.email_subject||'You triggered {{automation_name}}!')
+  const [emailBody, setEmailBody] = useState(initial?.email_body||'Hi {{first_name}},\n\nThanks for engaging with our TikTok! Here is the info you requested:\n\n{{dm_message}}\n\nBest,\n{{brand_name}}')
   const [saving, setSaving] = useState(false)
   const IS = {overlay:{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20},modal:{background:'#181818',border:'1px solid #2A2A2A',borderRadius:16,width:'100%',maxWidth:500,maxHeight:'85vh',overflowY:'auto'}}
   async function save() {
     if (!name.trim()) return
     setSaving(true)
-    await onSave({ name, trigger_type:trigger, keywords:keywords.split(',').map(k=>k.trim()).filter(Boolean), dm_message:message })
+    await onSave({ name, trigger_type:trigger, keywords:keywords.split(',').map(k=>k.trim()).filter(Boolean), dm_message:message, email_enabled:emailEnabled, email_subject:emailSubject, email_body:emailBody })
     setSaving(false)
     onClose()
   }
@@ -60,6 +63,36 @@ function Modal({ onClose, onSave, initial }) {
             <label style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',color:'#888',display:'block',marginBottom:5}}>DM Message</label>
             <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={3} style={{width:'100%',background:'#0D0D0D',border:'1px solid #2A2A2A',borderRadius:8,padding:'9px 11px',color:'#fff',fontSize:13,outline:'none',fontFamily:'inherit',resize:'vertical',boxSizing:'border-box'}} />
             <div style={{fontSize:10,color:'#888',marginTop:4}}>Variables: {'{{first_name}}'} {'{{tiktok_username}}'}</div>
+          </div>
+          {/* Email Action */}
+          <div style={{background:'rgba(37,244,238,0.04)',border:'1px solid rgba(37,244,238,0.15)',borderRadius:9,padding:12}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:emailEnabled?10:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:15}}>✉️</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:'#fff'}}>Also Send Email</div>
+                  <div style={{fontSize:10,color:'#888'}}>Requires email sender in Settings</div>
+                </div>
+              </div>
+              <label style={{position:'relative',width:36,height:19,cursor:'pointer',flexShrink:0}}>
+                <input type="checkbox" checked={emailEnabled} onChange={e=>setEmailEnabled(e.target.checked)} style={{opacity:0,width:0,height:0}} />
+                <span style={{position:'absolute',inset:0,background:emailEnabled?'#25F4EE':'#444',borderRadius:19,transition:'0.18s'}} />
+                <span style={{position:'absolute',width:13,height:13,top:3,left:emailEnabled?20:3,background:'#fff',borderRadius:'50%',transition:'0.18s'}} />
+              </label>
+            </div>
+            {emailEnabled && (
+              <div style={{display:'flex',flexDirection:'column',gap:9,marginTop:4}}>
+                <div>
+                  <label style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',color:'#555',display:'block',marginBottom:4}}>Subject</label>
+                  <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} placeholder="Subject line…" style={{width:'100%',background:'#0D0D0D',border:'1px solid #2A2A2A',borderRadius:7,padding:'7px 10px',color:'#fff',fontSize:12,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}} />
+                </div>
+                <div>
+                  <label style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',color:'#555',display:'block',marginBottom:4}}>Body</label>
+                  <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={3} style={{width:'100%',background:'#0D0D0D',border:'1px solid #2A2A2A',borderRadius:7,padding:'7px 10px',color:'#fff',fontSize:12,outline:'none',fontFamily:'inherit',resize:'vertical',boxSizing:'border-box'}} />
+                  <div style={{fontSize:10,color:'#555',marginTop:3}}>Variables: {'{{first_name}}'} {'{{tiktok_username}}'} {'{{dm_message}}'}</div>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{display:'flex',gap:8,justifyContent:'flex-end',paddingTop:4}}>
             <button onClick={onClose} style={{background:'transparent',border:'1px solid #2A2A2A',color:'#888',borderRadius:7,padding:'7px 14px',fontSize:12,cursor:'pointer'}}>Cancel</button>
@@ -122,7 +155,20 @@ export default function Automations({ session }) {
     })
     await supabase.from('automations').update({dms_sent: a.dms_sent+1}).eq('id',a.id)
     setAutomations(prev => prev.map(x => x.id===a.id ? {...x,dms_sent:x.dms_sent+1} : x))
-    await new Promise(r => setTimeout(r, 800))
+    // Send email if enabled + configured
+    if (a.email_enabled) {
+      const { data: profile } = await supabase.from('profiles').select('email_from_name,email_from_address,email_api_key').eq('id',uid).single()
+      if (profile?.email_api_key && profile?.email_from_address) {
+        const body = (a.email_body||'').replace(/{{first_name}}/g, fakeUser).replace(/{{tiktok_username}}/g, fakeUser).replace(/{{dm_message}}/g, a.dm_message||'')
+        const subject = (a.email_subject||'').replace(/{{automation_name}}/g, a.name)
+        await fetch('https://api.resend.com/emails', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+profile.email_api_key},
+          body: JSON.stringify({ from:`${profile.email_from_name||'TikFlow'} <${profile.email_from_address}>`, to:[profile.email_from_address], subject, text:body })
+        }).catch(()=>{})
+      }
+    }
+    await new Promise(r => setTimeout(r, 600))
     setSimulating(null)
   }
 
@@ -156,6 +202,7 @@ export default function Automations({ session }) {
               {a.trigger_type} trigger
               {(a.keywords||[]).length>0 && ` · Keywords: ${a.keywords.join(', ')}`}
               &nbsp;·&nbsp;<span style={{color:'#25F4EE',fontWeight:600}}>{a.dms_sent} DMs sent</span>
+              {a.email_enabled && <span style={{marginLeft:6,background:'rgba(37,244,238,0.1)',color:'#25F4EE',padding:'1px 5px',borderRadius:3,fontSize:10}}>✉ Email</span>}
             </div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>

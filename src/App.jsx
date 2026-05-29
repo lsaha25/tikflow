@@ -129,15 +129,26 @@ export default function App() {
           ))}
         </div>
         <div style={{padding:10,borderTop:'1px solid #2A2A2A'}}>
+          {/* Connect TikTok CTA — shown when no account connected */}
+          {tiktokAccounts.length === 0 && (
+            <div onClick={() => setPage('settings')} style={{marginBottom:8,background:'rgba(254,44,85,0.12)',border:'1px solid rgba(254,44,85,0.35)',borderRadius:8,padding:'9px 10px',cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:16}}>📱</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#FE2C55'}}>Connect TikTok</div>
+                <div style={{fontSize:10,color:'#888',marginTop:1}}>Required to start automating</div>
+              </div>
+              <span style={{fontSize:13,color:'#FE2C55'}}>→</span>
+            </div>
+          )}
           <div style={{display:'flex',alignItems:'center',gap:8,padding:8,background:'#181818',borderRadius:8,cursor:'pointer'}} onClick={() => setPage('settings')}>
             <div style={{width:26,height:26,borderRadius:'50%',background:'linear-gradient(135deg,#FE2C55,#25F4EE)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:11,flexShrink:0}}>
               {user.email?.[0]?.toUpperCase() || 'U'}
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</div>
-              {tiktokAccounts[0] && <div style={{fontSize:10,color:'#888'}}>@{tiktokAccounts[0].username}</div>}
+              {tiktokAccounts[0] ? <div style={{fontSize:10,color:'#25F4EE',fontWeight:600}}>@{tiktokAccounts[0].username} ✓</div> : <div style={{fontSize:10,color:'#EE1D52'}}>No TikTok connected</div>}
             </div>
-            <div style={{width:7,height:7,background:'#22C55E',borderRadius:'50%',flexShrink:0}} />
+            <div style={{width:7,height:7,background:tiktokAccounts.length>0?'#22C55E':'#EE1D52',borderRadius:'50%',flexShrink:0}} />
           </div>
         </div>
       </div>

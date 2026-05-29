@@ -6,15 +6,26 @@ create table if not exists public.profiles (
   email text,
   full_name text,
   plan text default 'free',
+  -- Email sender settings
+  email_from_name text default '',
+  email_from_address text default '',
+  email_api_key text default '',
+  email_provider text default 'resend',
   created_at timestamptz default now()
 );
+
+-- Add email columns if table already exists
+alter table public.profiles add column if not exists email_from_name text default '';
+alter table public.profiles add column if not exists email_from_address text default '';
+alter table public.profiles add column if not exists email_api_key text default '';
+alter table public.profiles add column if not exists email_provider text default 'resend';
 
 create table if not exists public.tiktok_accounts (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users(id) on delete cascade not null,
   username text not null,
   display_name text,
-  followers int default 0,
+  followers_count int default 0,
   connected_at timestamptz default now()
 );
 
@@ -25,6 +36,9 @@ create table if not exists public.automations (
   trigger_type text not null,
   keywords text[] default '{}',
   dm_message text default '',
+  email_enabled boolean default false,
+  email_subject text default '',
+  email_body text default '',
   status text default 'active',
   dms_sent int default 0,
   created_at timestamptz default now()
@@ -40,7 +54,6 @@ create table if not exists public.contacts (
   tags text[] default '{}',
   email text,
   phone text,
-  enrolled boolean default false,
   notes text,
   created_at timestamptz default now()
 );
@@ -50,15 +63,12 @@ create table if not exists public.broadcasts (
   user_id uuid references auth.users(id) on delete cascade not null,
   name text not null,
   message text,
-  link_text text,
+  link_label text,
   link_url text,
-  segment text default 'all',
   status text default 'draft',
   scheduled_at timestamptz,
-  recipients_count int default 0,
-  delivered_count int default 0,
-  opened_count int default 0,
-  clicks_count int default 0,
+  sent_at timestamptz,
+  sent_count int default 0,
   created_at timestamptz default now()
 );
 
@@ -67,19 +77,9 @@ create table if not exists public.sequences (
   user_id uuid references auth.users(id) on delete cascade not null,
   name text not null,
   status text default 'active',
-  enrolled_count int default 0,
+  enrolled int default 0,
+  steps jsonb default '[]',
   created_at timestamptz default now()
-);
-
-create table if not exists public.sequence_steps (
-  id uuid default gen_random_uuid() primary key,
-  sequence_id uuid references public.sequences(id) on delete cascade not null,
-  day_number int default 0,
-  step_name text,
-  message text,
-  link_text text,
-  link_url text,
-  position int default 0
 );
 
 -- Enable RLS
@@ -89,7 +89,6 @@ alter table public.automations enable row level security;
 alter table public.contacts enable row level security;
 alter table public.broadcasts enable row level security;
 alter table public.sequences enable row level security;
-alter table public.sequence_steps enable row level security;
 
 -- Policies
 drop policy if exists "profiles_all" on public.profiles;
@@ -109,13 +108,6 @@ create policy "broadcasts_all" on public.broadcasts for all using (auth.uid() = 
 
 drop policy if exists "sequences_all" on public.sequences;
 create policy "sequences_all" on public.sequences for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "steps_all" on public.sequence_steps;
-create policy "steps_all" on public.sequence_steps for all using (
-  exists (select 1 from public.sequences where id = sequence_id and user_id = auth.uid())
-) with check (
-  exists (select 1 from public.sequences where id = sequence_id and user_id = auth.uid())
-);
 
 -- Auto-create profile on signup
 create or replace function public.handle_new_user()
