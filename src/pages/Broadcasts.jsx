@@ -1,160 +1,177 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
-export default function Broadcasts({ broadcasts }) {
-  const [modal, setModal] = useState(false)
+function BroadcastModal({ onClose, onSave, initial }) {
+  const [name, setName] = useState(initial?.name || '')
+  const [message, setMessage] = useState(initial?.message || '')
+  const [link, setLink] = useState(initial?.link_url || '')
+  const [linkLabel, setLinkLabel] = useState(initial?.link_label || 'Click Here')
+  const [scheduledAt, setScheduledAt] = useState(initial?.scheduled_at ? initial.scheduled_at.slice(0,16) : '')
+  const [saving, setSaving] = useState(false)
+
+  const S = {
+    input: { width:'100%', background:'#0D0D0D', border:'1px solid #2A2A2A', borderRadius:8, padding:'8px 11px', color:'#fff', fontSize:13, outline:'none', fontFamily:'inherit', boxSizing:'border-box' },
+    label: { fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'#888', display:'block', marginBottom:5 },
+  }
+
+  async function save() {
+    if (!name.trim() || !message.trim()) return
+    setSaving(true)
+    const status = scheduledAt ? 'scheduled' : 'draft'
+    await onSave({ name, message, link_url: link, link_label: linkLabel, scheduled_at: scheduledAt || null, status })
+    setSaving(false)
+    onClose()
+  }
 
   return (
-    <div className="page">
-      <div className="page-hd">
-        <div>
-          <div className="page-title">Broadcasts</div>
-          <div className="page-sub">Mass TikTok DMs with clickable link buttons — not available in ManyChat</div>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:'#181818',border:'1px solid #2A2A2A',borderRadius:16,width:'100%',maxWidth:480,maxHeight:'85vh',overflowY:'auto'}}>
+        <div style={{padding:'14px 18px',borderBottom:'1px solid #2A2A2A',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{fontSize:14,fontWeight:800,color:'#fff'}}>{initial ? 'Edit' : 'New'} Broadcast</div>
+          <button onClick={onClose} style={{background:'#222',border:'1px solid #2A2A2A',color:'#888',borderRadius:6,width:26,height:26,cursor:'pointer',fontSize:13}}>✕</button>
         </div>
-        <button className="btn btn-primary" onClick={()=>setModal(true)}>＋ New Broadcast</button>
-      </div>
-
-      <div className="tabs">
-        {['All','Sent','Scheduled','Draft'].map(t=>(
-          <div key={t} className={`tab${t==='All'?' active':''}`}>{t}</div>
-        ))}
-      </div>
-
-      {broadcasts.map(bc => (
-        <div key={bc.id} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, padding:16, marginBottom:12 }}>
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, marginBottom:3 }}>{bc.name}</div>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>{bc.time}</div>
-            </div>
-            <span className={`tag t-${bc.status==='sent'?'active':bc.status==='scheduled'?'paused':'draft'}`}>
-              {bc.status}
-            </span>
+        <div style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:13}}>
+          <div><label style={S.label}>Broadcast Name *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Summer Sale Announcement" style={S.input} /></div>
+          <div>
+            <label style={S.label}>DM Message *</label>
+            <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={4} placeholder="Hey {{first_name}}! 👋 We have something special for you..." style={{...S.input,resize:'vertical'}} />
+            <div style={{fontSize:10,color:'#888',marginTop:4}}>Variables: {'{{first_name}}'} {'{{tiktok_username}}'}</div>
           </div>
-
-          {bc.status !== 'draft' && (
-            <>
-              <div style={{ display:'flex', gap:24, paddingTop:12, borderTop:'1px solid var(--border)' }}>
-                {[
-                  { val: bc.recipients.toLocaleString(), lbl:'Delivered' },
-                  { val: bc.opened.toLocaleString(),     lbl:'Opened',      color:'var(--cyan)'  },
-                  { val: bc.clicks.toLocaleString(),     lbl:'Link Clicks', color:'var(--green)' },
-                  { val: bc.ctr,                         lbl:'CTR',         color:'var(--amber)' },
-                ].map((s,i) => (
-                  <div key={i} style={{ textAlign:'center' }}>
-                    <div style={{ fontSize:18, fontWeight:800, color:s.color||'var(--text)' }}>{s.val}</div>
-                    <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{s.lbl}</div>
-                  </div>
-                ))}
-              </div>
-              {bc.status === 'sent' && (
-                <div className="prog" style={{ marginTop:10 }}>
-                  <div className="prog-fill" style={{ width:`${Math.round(bc.opened/bc.recipients*100)}%` }} />
-                </div>
-              )}
-            </>
-          )}
-
-          {bc.status === 'draft' && (
-            <button className="btn btn-ghost btn-sm">Continue editing →</button>
-          )}
-        </div>
-      ))}
-
-      <div className="card" style={{ background:'rgba(37,244,238,.04)', borderColor:'rgba(37,244,238,.2)' }}>
-        <div style={{ fontSize:13, fontWeight:700, color:'var(--cyan)', marginBottom:7 }}>💡 TikFlow Broadcast Features</div>
-        <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
-          Segment by: <strong style={{ color:'var(--text)' }}>Recent commenters · New followers · Link clickers · Video viewers · Custom tags</strong>
-          — and send each segment a personalized DM with fully clickable URL buttons. ManyChat has zero broadcast support for TikTok.
+          <div style={{background:'rgba(37,244,238,0.05)',border:'1px solid rgba(37,244,238,0.15)',borderRadius:8,padding:12}}>
+            <div style={{fontSize:11,color:'#25F4EE',fontWeight:700,marginBottom:10}}>🔗 Clickable Link Button (TikTok exclusive feature)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div><label style={{...S.label,color:'#555'}}>Button Label</label><input value={linkLabel} onChange={e=>setLinkLabel(e.target.value)} placeholder="Shop Now" style={S.input} /></div>
+              <div><label style={{...S.label,color:'#555'}}>URL</label><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://yoursite.com" style={S.input} /></div>
+            </div>
+          </div>
+          <div>
+            <label style={S.label}>Schedule Send (optional)</label>
+            <input type="datetime-local" value={scheduledAt} onChange={e=>setScheduledAt(e.target.value)} style={{...S.input,colorScheme:'dark'}} />
+            <div style={{fontSize:10,color:'#888',marginTop:4}}>Leave empty to save as draft</div>
+          </div>
+          <div style={{display:'flex',gap:8,justifyContent:'flex-end',paddingTop:4}}>
+            <button onClick={onClose} style={{background:'transparent',border:'1px solid #2A2A2A',color:'#888',borderRadius:7,padding:'7px 14px',fontSize:12,cursor:'pointer'}}>Cancel</button>
+            <button onClick={save} disabled={saving||!name.trim()||!message.trim()} style={{background:'#FE2C55',color:'#fff',border:'none',borderRadius:7,padding:'7px 16px',fontSize:12,fontWeight:700,cursor:'pointer',opacity:(!name.trim()||!message.trim())?0.5:1}}>
+              {saving ? 'Saving…' : initial ? 'Save Changes' : 'Create Broadcast'}
+            </button>
+          </div>
         </div>
       </div>
-
-      {modal && <NewBroadcastModal onClose={()=>setModal(false)} />}
     </div>
   )
 }
 
-function NewBroadcastModal({ onClose }) {
-  const [step, setStep] = useState(1)
+export default function Broadcasts({ session }) {
+  const [broadcasts, setBroadcasts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [tabFilter, setTabFilter] = useState('all')
+  const uid = session.user.id
+
+  useEffect(() => { load() }, [uid])
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('broadcasts').select('*').eq('user_id', uid).order('created_at', { ascending: false })
+    setBroadcasts(data || [])
+    setLoading(false)
+  }
+
+  async function save(fields) {
+    if (editing) {
+      await supabase.from('broadcasts').update(fields).eq('id', editing.id)
+    } else {
+      await supabase.from('broadcasts').insert({ ...fields, user_id: uid })
+    }
+    setEditing(null)
+    load()
+  }
+
+  async function del(id) {
+    if (!confirm('Delete this broadcast?')) return
+    await supabase.from('broadcasts').delete().eq('id', id)
+    setBroadcasts(prev => prev.filter(b => b.id !== id))
+  }
+
+  async function simulateSend(b) {
+    if (!confirm(`Simulate sending "${b.name}" to all contacts?`)) return
+    const { count } = await supabase.from('contacts').select('*', { count:'exact', head:true }).eq('user_id', uid)
+    const sent = count || 0
+    await supabase.from('broadcasts').update({ status:'sent', sent_count: sent, sent_at: new Date().toISOString() }).eq('id', b.id)
+    setBroadcasts(prev => prev.map(x => x.id===b.id ? {...x, status:'sent', sent_count:sent} : x))
+  }
+
+  const filtered = tabFilter === 'all' ? broadcasts : broadcasts.filter(b => b.status === tabFilter)
+  const STATUS_COLOR = { sent:'#22C55E', scheduled:'#25F4EE', draft:'#888' }
+
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="modal-hd">
-          <div className="modal-title">New Broadcast</div>
-          <button onClick={onClose} style={{ background:'var(--card2)', border:'1px solid var(--border)', borderRadius:5, padding:'4px 8px', cursor:'pointer', color:'var(--muted)', fontSize:12 }}>✕</button>
+    <div style={{padding:'20px 24px'}}>
+      {showModal && <BroadcastModal onClose={()=>{setShowModal(false);setEditing(null)}} onSave={save} initial={editing} />}
+
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:800,color:'#fff'}}>Broadcasts</div>
+          <div style={{fontSize:12,color:'#888',marginTop:2}}>Mass TikTok DMs with clickable link buttons</div>
         </div>
-        <div className="modal-body">
-          {/* Step indicator */}
-          <div style={{ display:'flex', gap:6, marginBottom:20 }}>
-            {['Audience','Message','Schedule'].map((s,i)=>(
-              <div key={s} style={{ flex:1, textAlign:'center' }}>
-                <div style={{ width:24, height:24, borderRadius:'50%', background: i+1<=step?'var(--red)':'var(--card2)', color: i+1<=step?'#fff':'var(--muted)', fontSize:12, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 4px' }}>{i+1}</div>
-                <div style={{ fontSize:10, color: i+1===step?'var(--text)':'var(--muted)', fontWeight:600 }}>{s}</div>
+        <button onClick={()=>{setEditing(null);setShowModal(true)}} style={{background:'#FE2C55',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,cursor:'pointer'}}>＋ New Broadcast</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',gap:4,marginBottom:16,borderBottom:'1px solid #2A2A2A',paddingBottom:0}}>
+        {['all','sent','scheduled','draft'].map(t => (
+          <button key={t} onClick={()=>setTabFilter(t)} style={{background:'transparent',border:'none',borderBottom:tabFilter===t?'2px solid #FE2C55':'2px solid transparent',color:tabFilter===t?'#fff':'#555',padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',textTransform:'capitalize',marginBottom:-1}}>
+            {t} {broadcasts.filter(b=>t==='all'||b.status===t).length > 0 && <span style={{background:'#222',color:'#888',borderRadius:10,padding:'1px 5px',fontSize:10,marginLeft:4}}>{broadcasts.filter(b=>t==='all'||b.status===t).length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div style={{color:'#888',fontSize:13}}>Loading…</div> :
+       filtered.length === 0 ? (
+        <div style={{textAlign:'center',padding:'48px 0',background:'#181818',border:'1px solid #2A2A2A',borderRadius:12}}>
+          <div style={{fontSize:32,marginBottom:10}}>📣</div>
+          <div style={{fontSize:15,fontWeight:700,color:'#fff',marginBottom:6}}>No broadcasts yet</div>
+          <div style={{fontSize:12,color:'#888',marginBottom:16}}>Send a mass DM to all your contacts at once, with clickable link buttons</div>
+          <button onClick={()=>setShowModal(true)} style={{background:'#FE2C55',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontSize:12,fontWeight:700,cursor:'pointer'}}>Create Your First Broadcast</button>
+        </div>
+       ) : filtered.map(b => (
+        <div key={b.id} style={{background:'#181818',border:'1px solid #2A2A2A',borderRadius:12,padding:16,marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:700,color:'#fff',marginBottom:3}}>{b.name}</div>
+              <div style={{fontSize:11,color:'#888',lineHeight:1.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:400}}>
+                {b.message}
               </div>
-            ))}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0,marginLeft:12}}>
+              <span style={{fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:5,background:`${STATUS_COLOR[b.status]}22`,color:STATUS_COLOR[b.status]||'#888',textTransform:'capitalize'}}>{b.status}</span>
+            </div>
           </div>
 
-          {step===1 && (<>
-            <div className="form-grp">
-              <label className="form-lbl">Audience Segment</label>
-              <select className="form-inp">
-                <option>All followers</option>
-                <option>Recent commenters (30 days)</option>
-                <option>New followers (7 days)</option>
-                <option>Link clickers</option>
-                <option>Tagged: interested</option>
-                <option>Tagged: buyer</option>
-                <option>Custom filter…</option>
-              </select>
-            </div>
-            <div style={{ background:'rgba(37,244,238,.08)', border:'1px solid rgba(37,244,238,.2)', borderRadius:8, padding:'10px 12px', fontSize:12, color:'var(--text)', marginBottom:16 }}>
-              <span style={{ color:'var(--cyan)', fontWeight:700 }}>~4,200 recipients</span> match this segment
-            </div>
-          </>)}
+          <div style={{display:'flex',gap:12,fontSize:11,color:'#555',marginBottom:10,flexWrap:'wrap'}}>
+            {b.sent_count > 0 && <span>✉ {b.sent_count} sent</span>}
+            {b.scheduled_at && b.status==='scheduled' && <span>🕐 {new Date(b.scheduled_at).toLocaleString()}</span>}
+            {b.sent_at && b.status==='sent' && <span>✅ Sent {new Date(b.sent_at).toLocaleDateString()}</span>}
+            {b.link_url && <span style={{color:'#25F4EE'}}>🔗 {b.link_label || 'Link'}: {b.link_url.slice(0,30)}{b.link_url.length>30?'…':''}</span>}
+          </div>
 
-          {step===2 && (<>
-            <div className="form-grp">
-              <label className="form-lbl">Message</label>
-              <textarea className="form-inp" style={{ height:80 }} defaultValue="Hey {{first_name}}! 🔥 We have something special just for you. Tap below 👇" />
-            </div>
-            <div className="form-grp">
-              <label className="form-lbl">Add Link Button</label>
-              <div style={{ display:'flex', gap:6 }}>
-                <input className="form-inp" placeholder="Button label, e.g. 🛒 Shop Now" style={{ flex:1 }} />
-                <input className="form-inp" placeholder="https://" style={{ flex:1 }} />
-              </div>
-            </div>
-            <div style={{ background:'var(--bg)', borderRadius:8, padding:12 }}>
-              <div style={{ background:'var(--card2)', borderRadius:'12px 12px 12px 3px', padding:'9px 12px', maxWidth:220, fontSize:12, lineHeight:1.5, marginBottom:7 }}>
-                Hey! 🔥 We have something special just for you. Tap below 👇
-              </div>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'var(--red)', color:'#fff', borderRadius:7, padding:'7px 14px', fontSize:12, fontWeight:700 }}>
-                🛒 Shop Now
-              </div>
-            </div>
-          </>)}
-
-          {step===3 && (<>
-            <div className="form-grp">
-              <label className="form-lbl">Send</label>
-              <select className="form-inp">
-                <option>Send Now</option>
-                <option>Schedule for later</option>
-              </select>
-            </div>
-            <div className="form-grp">
-              <label className="form-lbl">Date & Time</label>
-              <input className="form-inp" type="datetime-local" />
-            </div>
-          </>)}
-
-          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:16 }}>
-            {step>1 && <button className="btn btn-ghost" onClick={()=>setStep(s=>s-1)}>← Back</button>}
-            {step<3
-              ? <button className="btn btn-primary" onClick={()=>setStep(s=>s+1)}>Continue →</button>
-              : <button className="btn btn-primary" onClick={onClose}>🚀 Send Broadcast</button>
-            }
+          <div style={{display:'flex',gap:8}}>
+            {b.status !== 'sent' && (
+              <button onClick={()=>simulateSend(b)} style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.25)',color:'#22C55E',borderRadius:6,padding:'5px 11px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                ▶ Simulate Send
+              </button>
+            )}
+            {b.status !== 'sent' && (
+              <button onClick={()=>{setEditing(b);setShowModal(true)}} style={{background:'transparent',border:'1px solid #2A2A2A',color:'#888',borderRadius:6,padding:'5px 10px',fontSize:11,cursor:'pointer'}}>Edit</button>
+            )}
+            <button onClick={()=>del(b.id)} style={{background:'transparent',border:'none',color:'#444',cursor:'pointer',fontSize:14,marginLeft:'auto'}}>🗑</button>
           </div>
         </div>
+       ))
+      }
+
+      <div style={{marginTop:16,padding:14,background:'rgba(37,244,238,0.05)',border:'1px solid rgba(37,244,238,0.15)',borderRadius:10,fontSize:12,color:'#888',lineHeight:1.7}}>
+        💡 <strong style={{color:'#fff'}}>Clickable Links in DMs</strong> — TikTok allows link buttons inside DMs (unlike Instagram). Use broadcasts to send promotional messages with a "Shop Now" button that takes users directly to your website or product page.
       </div>
     </div>
   )
